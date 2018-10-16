@@ -799,7 +799,7 @@ var JSUtil = require('../util/js');
 var $ = require('../util/preconditions');
 
 var GENESIS_BITS = 0x1d00ffff;
-
+const VERSION_SIG = 0x400;
 /**
  * Instantiate a BlockHeader from a Buffer, JSON object, or Object with
  * the properties of the BlockHeader
@@ -820,7 +820,9 @@ var BlockHeader = function BlockHeader(arg) {
     this.timestamp = info.time;
     this.bits = info.bits;
     this.nonce = info.nonce;
-
+    this.prevOutStakeHash = info.prevOutStakeHash;
+    this.prevOutStakeN = info.prevOutStakeN;
+    this.vchBlockSig = info.vchBlockSig;
     if (info.hash) {
         $.checkState(
             this.hash === info.hash,
@@ -858,12 +860,23 @@ BlockHeader._fromObject = function _fromObject(data) {
     $.checkArgument(data, 'data is required');
     var prevHash = data.prevHash;
     var merkleRoot = data.merkleRoot;
+    var vchBlockSig = data.vchBlockSig;
+    var prevOutStakeHash = data.prevOutStakeHash;
+    
     if (_.isString(data.prevHash)) {
         prevHash = BufferUtil.reverse(new Buffer(data.prevHash, 'hex'));
     }
     if (_.isString(data.merkleRoot)) {
         merkleRoot = BufferUtil.reverse(new Buffer(data.merkleRoot, 'hex'));
     }
+    if (_.isString(data.vchBlockSig)) {
+        vchBlockSig = new Buffer(data.vchBlockSig, 'hex');
+    }
+  
+    if (_.isString(data.prevOutStakeHash)) {
+        prevOutStakeHash = BufferUtil.reverse(new Buffer(data.prevOutStakeHash, 'hex'));
+    }
+
     var info = {
         hash: data.hash,
         version: data.version,
@@ -872,7 +885,10 @@ BlockHeader._fromObject = function _fromObject(data) {
         time: data.time,
         timestamp: data.time,
         bits: data.bits,
-        nonce: data.nonce
+        nonce: data.nonce,
+        prevOutStakeHash: prevOutStakeHash,
+        prevOutStakeN: data.prevOutStakeN,
+        vchBlockSig: vchBlockSig
     };
     return info;
 };
@@ -931,6 +947,13 @@ BlockHeader._fromBufferReader = function _fromBufferReader(br) {
     info.time = br.readUInt32LE();
     info.bits = br.readUInt32LE();
     info.nonce = br.readUInt32LE();
+    
+    if(info.version& VERSION_SIG) {
+        info.prevOutStakeHash = br.read(32);
+        info.prevOutStakeN = br.readUInt32LE();
+        var num = br.readVarintNum();
+        info.vchBlockSig = br.read(num);
+    }
     return info;
 };
 
@@ -954,7 +977,10 @@ BlockHeader.prototype.toObject = BlockHeader.prototype.toJSON = function toObjec
         merkleRoot: BufferUtil.reverse(this.merkleRoot).toString('hex'),
         time: this.time,
         bits: this.bits,
-        nonce: this.nonce
+        nonce: this.nonce,
+        prevOutStakeHash: this.prevOutStakeHash?BufferUtil.reverse(this.prevOutStakeHash).toString('hex'):null,
+        prevOutStakeN: this.prevOutStakeN,
+        vchBlockSig: this.vchBlockSig?this.vchBlockSig.toString('hex'):null
     };
 };
 
@@ -986,6 +1012,12 @@ BlockHeader.prototype.toBufferWriter = function toBufferWriter(bw) {
     bw.writeUInt32LE(this.time);
     bw.writeUInt32LE(this.bits);
     bw.writeUInt32LE(this.nonce);
+    if(this.version&VERSION_SIG) { 
+        bw.write(this.prevOutStakeHash);
+        bw.writeUInt32LE(this.prevOutStakeN);
+        bw.writeVarintNum(this.vchBlockSig.length);
+        bw.write(this.vchBlockSig);
+    }
     return bw;
 };
 
@@ -4671,9 +4703,9 @@ addNetwork({
     prefix: 'y',
     txtimestamp: true,
     algorithm: "scrypt",
-    pubkeyhash: 0x6f,
-    privatekey: 0xef,
-    scripthash: 0xc4,
+    pubkeyhash: 0x1e,
+    privatekey: 0x59,
+    scripthash: 0xef,
     xpubkey: 0x043587cf,
     xprivkey: 0x04358394
 });
